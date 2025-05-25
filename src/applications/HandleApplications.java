@@ -1,150 +1,194 @@
 package applications;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class HandleApplications {
 
-    private Map<String, Skill> skills = new HashMap<>();
-    private Map<String, Position> positions = new HashMap<>();
-    private Map<String, Applicant> applicants = new HashMap<>();
+    private final Map<String, Skill> skills = new HashMap<>();
+    private final Map<String, Position> positions = new HashMap<>();
+    private final Map<String, Applicant> applicants = new HashMap<>();
+    private final Set<String> appliedApplicants = new HashSet<>(); // track applicants who have applied
 
-    // R1: Skills
+    // R1: Add skills (throws if duplicate)
     public void addSkills(String... skillNames) throws ApplicationException {
-        for (String name : skillNames) {
-            if (skills.containsKey(name)) {
-                throw new ApplicationException("Duplicate skill: " + name);
+        Set<String> seen = new HashSet<>();
+        for (String skillName : skillNames) {
+            if (skills.containsKey(skillName)) {
+                throw new ApplicationException("Duplicate skill: " + skillName);
             }
-            skills.put(name, new Skill(name));
+            if (!seen.add(skillName)) {
+                throw new ApplicationException("Duplicate skill in input: " + skillName);
+            }
+        }
+        for (String skillName : skillNames) {
+            skills.put(skillName, new Skill(skillName));
         }
     }
 
+    // R1: Add position with required skills (throws if position exists or skills missing)
     public void addPosition(String positionName, String... requiredSkillNames) throws ApplicationException {
         if (positions.containsKey(positionName)) {
             throw new ApplicationException("Position already exists: " + positionName);
         }
-        Set<Skill> required = new HashSet<>();
+
+        List<Skill> requiredSkills = new ArrayList<>();
         for (String skillName : requiredSkillNames) {
             Skill skill = skills.get(skillName);
             if (skill == null) {
-                throw new ApplicationException("Skill not found: " + skillName);
+                throw new ApplicationException("Required skill not found: " + skillName);
             }
-            required.add(skill);
+            requiredSkills.add(skill);
         }
-        Position position = new Position(positionName, required);
+
+        Position position = new Position(positionName, requiredSkills);
         positions.put(positionName, position);
-        for (Skill skill : required) {
+
+        // Link skills to this position
+        for (Skill skill : requiredSkills) {
             skill.addPosition(position);
         }
     }
 
+    // R1: Get skill by name or null
     public Skill getSkill(String name) {
         return skills.get(name);
     }
 
+    // R1: Get position by name or null
     public Position getPosition(String name) {
         return positions.get(name);
     }
 
-    // R2: Applicants
-    public void addApplicant(String name, String capabilitiesStr) throws ApplicationException {
-        if (applicants.containsKey(name)) {
-            throw new ApplicationException("Applicant already exists: " + name);
+    // R2: Add applicant with capabilities string e.g. "java:9,sql:7"
+    public void addApplicant(String applicantName, String capabilitiesStr) throws ApplicationException {
+        if (applicants.containsKey(applicantName)) {
+            throw new ApplicationException("Applicant already exists: " + applicantName);
         }
 
         Map<String, Integer> capabilities = new HashMap<>();
-        if (!capabilitiesStr.isEmpty()) {
-            String[] parts = capabilitiesStr.split(",");
-            for (String part : parts) {
-                String[] pair = part.split(":");
-                if (pair.length != 2) throw new ApplicationException("Invalid capability format");
-
-                String skillName = pair[0];
-                int level = Integer.parseInt(pair[1]);
-
-                if (!skills.containsKey(skillName)) {
-                    throw new ApplicationException("Skill not found: " + skillName);
+        if (!capabilitiesStr.trim().isEmpty()) {
+            String[] pairs = capabilitiesStr.split(",");
+            for (String pair : pairs) {
+                String[] parts = pair.trim().split(":");
+                if (parts.length != 2) {
+                    throw new ApplicationException("Invalid capability format for: " + pair);
                 }
-
+                String skillName = parts[0].trim();
+                Skill skill = skills.get(skillName);
+                if (skill == null) {
+                    throw new ApplicationException("Capability skill not found: " + skillName);
+                }
+                int level;
+                try {
+                    level = Integer.parseInt(parts[1].trim());
+                } catch (NumberFormatException e) {
+                    throw new ApplicationException("Invalid level for skill " + skillName);
+                }
                 if (level < 1 || level > 10) {
-                    throw new ApplicationException("Invalid level for skill: " + skillName);
+                    throw new ApplicationException("Level out of range (1-10) for skill " + skillName);
                 }
-
                 capabilities.put(skillName, level);
             }
         }
 
-        applicants.put(name, new Applicant(name, capabilities));
+        applicants.put(applicantName, new Applicant(applicantName, capabilities));
     }
 
+    // R2: Get applicant capabilities string sorted alphabetically
     public String getCapabilities(String applicantName) throws ApplicationException {
         Applicant applicant = applicants.get(applicantName);
         if (applicant == null) {
             throw new ApplicationException("Applicant not found: " + applicantName);
         }
-
-        return applicant.getFormattedCapabilities();
+        return applicant.getCapabilitiesString();
     }
 
-    // R3: Applications
+    // R3: Applicant applies for a position
     public void enterApplication(String applicantName, String positionName) throws ApplicationException {
         Applicant applicant = applicants.get(applicantName);
+        if (applicant == null) {
+            throw new ApplicationException("Applicant not found: " + applicantName);
+        }
         Position position = positions.get(positionName);
+        if (position == null) {
+            throw new ApplicationException("Position not found: " + positionName);
+        }
+        if (appliedApplicants.contains(applicantName)) {
+            throw new ApplicationException("Applicant already applied for a position: " + applicantName);
+        }
 
-        if (applicant == null) throw new ApplicationException("Applicant not found");
-        if (position == null) throw new ApplicationException("Position not found");
-        if (applicant.hasApplied()) throw new ApplicationException("Applicant already applied");
-
-        for (Skill skill : position.getRequiredSkills()) {
-            if (!applicant.hasCapability(skill.getName())) {
-                throw new ApplicationException("Applicant missing skill: " + skill.getName());
+        // Check applicant has required capabilities
+        Map<String, Integer> capabilities = applicant.getCapabilities();
+        for (Skill requiredSkill : position.getRequiredSkills()) {
+            if (!capabilities.containsKey(requiredSkill.getName())) {
+                throw new ApplicationException("Applicant missing required skill: " + requiredSkill.getName());
             }
         }
 
-        position.addApplicant(applicant);
-        applicant.setApplied(true);
+        appliedApplicants.add(applicantName);
+        position.addApplicant(applicantName);
     }
 
-    // R4: Winners
+    // R4: Set winner for a position
     public int setWinner(String positionName, String applicantName) throws ApplicationException {
         Position position = positions.get(positionName);
+        if (position == null) {
+            throw new ApplicationException("Position not found: " + positionName);
+        }
         Applicant applicant = applicants.get(applicantName);
-
-        if (position == null || applicant == null)
-            throw new ApplicationException("Invalid position or applicant");
-
-        if (!position.getApplicants().contains(applicant))
-            throw new ApplicationException("Applicant did not apply");
-
-        if (position.getWinner() != null)
+        if (applicant == null) {
+            throw new ApplicationException("Applicant not found: " + applicantName);
+        }
+        if (!position.getApplicants().contains(applicantName)) {
+            throw new ApplicationException("Applicant did not apply for position");
+        }
+        if (position.getWinner() != null) {
             throw new ApplicationException("Position already has a winner");
-
-        int total = 0;
-        for (Skill skill : position.getRequiredSkills()) {
-            total += applicant.getLevel(skill.getName());
         }
 
-        if (total <= position.getRequiredSkills().size() * 6)
-            throw new ApplicationException("Not enough total skill level");
+        Map<String, Integer> capabilities = applicant.getCapabilities();
+        int sumLevels = 0;
+        for (Skill requiredSkill : position.getRequiredSkills()) {
+            Integer level = capabilities.get(requiredSkill.getName());
+            if (level == null) {
+                throw new ApplicationException("Applicant missing required skill: " + requiredSkill.getName());
+            }
+            sumLevels += level;
+        }
 
-        position.setWinner(applicant);
-        return total;
+        int minSum = position.getRequiredSkills().size() * 6;
+        if (sumLevels <= minSum) {
+            throw new ApplicationException("Sum of levels does not exceed six times the number of required skills");
+        }
+
+        position.setWinner(applicantName);
+        return sumLevels;
     }
 
-    // R5: Statistics
-    public List<String> skill_nApplicants() {
-        return skills.values().stream()
-                .sorted(Comparator.comparing(Skill::getName))
-                .map(skill -> String.format("%s:%d", skill.getName(), (int) applicants.values().stream()
-                        .filter(a -> a.hasCapability(skill.getName()))
-                        .count()))
-                .collect(Collectors.toList());
+    // R5: Return Map skill -> number of applicants who have it, sorted by skill name
+    public Map<String, Integer> skill_nApplicants() {
+        Map<String, Integer> counts = new TreeMap<>();
+        for (String skillName : skills.keySet()) {
+            int count = 0;
+            for (Applicant a : applicants.values()) {
+                if (a.getCapabilities().containsKey(skillName)) count++;
+            }
+            counts.put(skillName, count);
+        }
+        return counts;
     }
 
+    // R5: Position with highest number of applicants
     public String maxPosition() {
-        return positions.values().stream()
-                .max(Comparator.comparingInt(p -> p.getApplicants().size()))
-                .map(Position::getName)
-                .orElse(null);
+        String maxPos = null;
+        int maxCount = -1;
+        for (Position p : positions.values()) {
+            int c = p.getApplicants().size();
+            if (c > maxCount) {
+                maxCount = c;
+                maxPos = p.getName();
+            }
+        }
+        return maxPos;
     }
 }
