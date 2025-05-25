@@ -2,51 +2,45 @@ package applications;
 
 import java.util.*;
 
-public class Position {
-    private String name;
-    private Set<Skill> requiredSkills;
-    private Set<Applicant> applicants = new TreeSet<>(Comparator.comparing(Applicant::getName));
-    private Applicant winner;
+public class Position implements Comparable<Position> {
+    private final String name;
+    private final Set<Skill> requiredSkills;
+    private final SortedSet<String> applicants; // applicant names sorted alphabetically
+    private String winner;
 
-    public Position(String name, Set<Skill> skills) {
+    public Position(String name, Collection<Skill> skills) {
         this.name = name;
-        this.requiredSkills = skills;
+        this.requiredSkills = new HashSet<>(skills);
+        this.applicants = new TreeSet<>();
+        this.winner = null;
     }
 
     public String getName() {
         return name;
     }
 
-    public void addApplicant(Applicant applicant) {
-        applicants.add(applicant);
+    public Set<Skill> getRequiredSkills() {
+        return Collections.unmodifiableSet(requiredSkills);
     }
 
-    public List<Applicant> getApplicants() {
+    public void addApplicant(String applicantName) {
+        applicants.add(applicantName);
+    }
+
+    public List<String> getApplicants() {
         return new ArrayList<>(applicants);
     }
 
-    public Set<Skill> getRequiredSkills() {
-        return requiredSkills;
-    }
-
     public String getWinner() {
-        return winner != null ? winner.getName() : null;
+        return winner;
     }
 
-    public void setWinner(Applicant applicant) throws ApplicationException {
-        if (winner != null) throw new ApplicationException("Winner already set");
+    public void setWinner(String winner) {
+        this.winner = winner;
+    }
 
-        int sum = 0;
-        for (Skill skill : requiredSkills) {
-            Integer level = applicant.getSkillLevel(skill.getName());
-            if (level == null)
-                throw new ApplicationException("Missing required skill: " + skill.getName());
-            sum += level;
-        }
-
-        if (sum <= 6 * requiredSkills.size())
-            throw new ApplicationException("Skill level sum is too low");
-
-        this.winner = applicant;
+    @Override
+    public int compareTo(Position o) {
+        return this.name.compareTo(o.name);
     }
 }
