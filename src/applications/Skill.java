@@ -3,18 +3,19 @@ package applications;
 import java.util.*;
 
 public class Skill {
-    private String name;
-    private Set<Position> positions = new TreeSet<>(Comparator.comparing(Position::getName));
+    private final String name;
+    private final Set<Position> positions;
 
     public Skill(String name) {
         this.name = name;
+        this.positions = new TreeSet<>(Comparator.comparing(Position::getName));
     }
 
     public String getName() {
         return name;
     }
 
-    void addPosition(Position position) {
+    public void addPosition(Position position) {
         positions.add(position);
     }
 
